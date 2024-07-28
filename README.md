@@ -87,7 +87,7 @@ npm start
 Mở http://localhost:3000/
 
 ## Demo
-![demo](screenshot/demo.mp4)
+https://github.com/user-attachments/assets/df5c7c96-069b-442a-bcdd-8fa025289b38
 
 ## 3. Đánh giá
 ### Ưu điểm

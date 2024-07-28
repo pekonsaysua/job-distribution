@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Management Interface</title>
+  <style>
+    .container {
+      display: flex;
+      justify-content: space-between;
+      padding: 20px;
+    }
+
+    .column {
+      width: 30%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+      height: 70vh;
+      /* Set fixed height for columns */
+      overflow-y: auto;
+      /* Enable vertical scrolling */
+    }
+
+    .column h2 {
+      text-align: center;
+    }
+
+    .item {
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background-color: #fff;
+    }
+
+    .job-status {
+      font-weight: bold;
+    }
+
+    .job-status.completed {
+      color: green;
+    }
+
+    .job-status.pending {
+      color: orange;
+    }
+
+    .job-status.processing {
+      color: blue;
+    }
+
+    .agent-status {
+      font-weight: bold;
+    }
+
+    .agent-status.free {
+      color: green;
+    }
+
+    .agent-status.busy {
+      color: red;
+    }
+
+    .agent-status.disconnected {
+      color: gray;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="">
+    <h2>Create Job</h2>
+    <form id="createJobForm">
+
+      <label for="language">Language:</label>
+      <select id="language" name="language" required>
+        <option value="Bash">Bash</option>
+        <option value="JavaScript">JavaScript</option>
+        <option value="Python">Python</option>
+        <option value="Golang">Golang</option>
+        <option value="Java">Java</option>
+      </select>
+
+      <label for="command">Command:</label>
+      <textarea id="command" name="command" required></textarea>
+
+      <button type="submit">Create Job</button>
+    </form>
+  </div>
+  <div class="container">
+    <div class="column">
+      <h2>Pending Jobs</h2>
+      <div id="pendingJobsList"></div>
+    </div>
+    <div class="column">
+      <h2>Agents</h2>
+      <div id="agentsList"></div>
+    </div>
+    <div class="column">
+      <h2>Completed Jobs</h2>
+      <div id="completedJobsList"></div>
+    </div>
+  </div>
+
+  <script>
+    const ws = new WebSocket('ws://localhost:3000');
+    const pendingJobsList = document.getElementById('pendingJobsList');
+    const agentsList = document.getElementById('agentsList');
+    const completedJobsList = document.getElementById('completedJobsList');
+    const createJobForm = document.getElementById('createJobForm');
+
+    ws.onopen = () => {
+      console.log('Connected to server');
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      switch (data.type) {
+        case 'initialData':
+          updateJobs(data.jobs);
+          updateAgents(data.agents);
+          break;
+        case 'jobCreated':
+          addJobToPending(data.job);
+          break;
+        case 'agentUpdated':
+          updateAgent(data.agentId, data.status, data.jobId);
+          break;
+        case 'jobProcessing':
+          updateAgent(data.agentId, 'busy', data.jobId);
+          removeJobFromPending(data.jobId);
+          break;
+        case 'jobCompleted':
+          updateAgent(data.agentId, 'free', null);
+          addJobToCompleted(data.job);
+          break;
+        default:
+          break;
+      }
+    };
+
+    createJobForm.onsubmit = (event) => {
+      event.preventDefault();
+      const command = document.getElementById('command').value;
+      const language = document.getElementById('language').value;
+
+      ws.send(JSON.stringify({ type: 'createJob', job: { command, language } }));
+    };
+
+    function updateJobs(jobs) {
+      pendingJobsList.innerHTML = '';
+      completedJobsList.innerHTML = '';
+
+      jobs.forEach((job) => {
+        if (job.status === 'pending') {
+          addJobToPending(job);
+        } else if (job.status === 'completed') {
+          addJobToCompleted(job);
+        }
+      });
+    }
+
+    function addJobToPending(job) {
+      const jobItem = document.createElement('div');
+      jobItem.classList.add('item');
+      jobItem.id = `job-${job.id}`;
+      jobItem.innerHTML = `
+        <p><strong>ID:</strong> ${job.id}</p>
+        <p><strong>Command:</strong> ${job.command}</p>
+        <p><strong>Language:</strong> ${job.language}</p>
+        <p><strong>Status:</strong> <span class="job-status pending">${job.status}</span></p>
+      `;
+      pendingJobsList.insertBefore(jobItem, pendingJobsList.firstChild);
+    }
+
+    function removeJobFromPending(jobId) {
+      const jobItem = document.getElementById(`job-${jobId}`);
+      if (jobItem) {
+        pendingJobsList.removeChild(jobItem);
+      }
+    }
+
+    function addJobToCompleted(job) {
+      const jobItem = document.createElement('div');
+      jobItem.classList.add('item');
+      jobItem.innerHTML = `
+        <p><strong>ID:</strong> ${job.id}</p>
+        <p><strong>Command:</strong> ${job.command}</p>
+        <p><strong>Language:</strong> ${job.language}</p>
+        <p><strong>Status:</strong> <span class="job-status completed">${job.status}</span></p>
+        <p><strong>Result:</strong> ${job.result || 'N/A'}</p>
+      `;
+      completedJobsList.insertBefore(jobItem, completedJobsList.firstChild);
+    }
+
+    function updateAgents(agents) {
+      agentsList.innerHTML = '';
+      agents.forEach((agent) => addAgent(agent));
+    }
+
+    function addAgent(agent) {
+      const agentItem = document.createElement('div');
+      agentItem.classList.add('item');
+      agentItem.id = `agent-${agent.id}`;
+      agentItem.innerHTML = `
+        <p><strong>ID:</strong> ${agent.id}</p>
+        <p><strong>Status:</strong> <span class="agent-status ${agent.status}">${agent.status}</span></p>
+        <p><strong>Current Job:</strong> ${agent.jobId || 'N/A'}</p>
+      `;
+      agentsList.appendChild(agentItem);
+    }
+
+    function updateAgent(agentId, status, jobId) {
+      const agentItem = document.getElementById(`agent-${agentId}`);
+      if (agentItem) {
+        if (status === 'disconnect') {
+          agentsList.removeChild(agentItem);
+        } else {
+          agentItem.querySelector('.agent-status').textContent = status;
+          agentItem.querySelector('.agent-status').className = `agent-status ${status}`;
+          agentItem.querySelector('p:last-child').textContent = `Current Job: ${jobId || 'N/A'}`;
+        }
+      } else {
+        addAgent({ id: agentId, status, jobId });
+      }
+    }
+
+    function moveJobToCompleted(job) {
+      const jobItem = document.getElementById(`job-${job.id}`);
+      console.log(jobItem);
+      if (jobItem) {
+        jobItem.querySelector('.job-status').textContent = job.status;
+        jobItem.querySelector('.job-status').className = `job-status completed`;
+        jobItem.querySelector('p:last-child').textContent = `Result: ${job.result || 'N/A'}`;
+        completedJobsList.appendChild(jobItem);
+      }
+    }
+  </script>
+</body>
+
+</html>
